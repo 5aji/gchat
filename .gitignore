@@ -1,2 +1,7 @@
 compile_commands.json
 .ccls-cache/
+
+*.d
+*.o
+client
+server

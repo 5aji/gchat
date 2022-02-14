@@ -9,8 +9,9 @@ for CSCI 4211 Spring 2022. GopherChat specifies a single server
 and client interface for private/public messages, with support for
 anonymous messages, file transfers, users list, and server side monitoring.
 
-This project further extends the requirements with blah blah blah.
-
+This project further extends the requirements with a threading server
+with load balancing, offline messages, and simple encryption. It also supports both IPv4
+and IPv6.
 
 
 Struture
@@ -37,6 +38,11 @@ Compilation
 A Makefile is included to compile both programs. Furthermore, there is a special test function
 that runs the testbenches. This is provided for convenience and should not be used in place of
 proper TA testing.
+
+
+Execution
+============
+
 
 
 

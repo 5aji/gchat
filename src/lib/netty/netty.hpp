@@ -3,22 +3,26 @@
 #pragma once
 #include <sys/socket.h>
 #include <netdb.h>
-#include <unistd.h>
 #include <string>
 #include <vector>
 #include <memory>
+#include <system_error>
+#include <exception>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <cstring>
 
 namespace Netty {
 
-// A NetworkPacket is any data structure that can be sent over the network.
-// it has a serialize and deserialize function that can be used to add to 
-// a transmission.
-class NetworkPacket {
-	public:
-	virtual void serialize(std::vector<uint8_t>& buf);
-	virtual void deserialize(std::vector<uint8_t>& buf);
-	virtual ~NetworkPacket();
-};
+
+// ======== Misc. Syscall Wrappers ========
+
+// Convert addrinfo to string for printing.
+std::string inet_ntop(struct addrinfo& addr); 
+/* std::string inet_ntop(int family, struct sockaddr& addr, socklen_t addrlen); */
+
+
+// ======== addrinfo stuff =========
 
 // this is a helper class for managing the lifecycle of a addrinfo struct.
 // it lets us use std::unique_ptr with it.
@@ -28,32 +32,64 @@ struct addrinfo_deleter {
 	}
 };
 
-typedef std::unique_ptr<struct addrinfo, addrinfo_deleter> addrinfo_p;
+
+// Wrapper class to help with addrinfo memory safety. When using this,
+// C++ will ensure that the struct is freed properly after it leaves scope.
+using addrinfo_p =  std::unique_ptr<struct addrinfo, addrinfo_deleter>;
+
+// Helper function that calls getaddrinfo and handles creating the result pointer
+// as well as error checking.
+addrinfo_p getaddrinfo(std::string node, std::string service, struct addrinfo* hints);
+
+// The best function. You just give it a name, a port/port identifier, and
+// whether it is passive or not. it handles everything else. Memory Safe!
+// Results can be passed directly to Socket for quick initialization.
+addrinfo_p getaddrinfo(std::string node, std::string service, bool passive);
+
+// Create a new addrinfo struct with sane defaults (TCP and either ipv6 or ipv4)
+addrinfo_p make_addrinfo(bool passive) noexcept;
+
 
 // A Socket is the base class for network communication. It wraps the linux
 // socket api in a safe manner. It helps set up connections and performs
-// error checking for all operations using C++ exceptions instead of errno.
+// error checking for all operations using C++ exceptions.
 class Socket {
-	int sock_fd;
-	addrinfo_p info;
-	public:
-	Socket(); // null addrinfo 
-	Socket(std::string hostname, std::string port); // construct our own addr info
-	Socket(addrinfo_p addrinfo); // take prebuilt addrinfo (might not be used);
-	Socket(int fd); // takes an existing socket (for things like accept)
+	int sock_fd = -1;
+	addrinfo_p info = nullptr;
 
-	// we can't use the default destructor since we have a fd.
+	// internal function
+	bool islistening();
+
+	public:
+	Socket(): sock_fd(-1), info(nullptr) { }; // null addrinfo 
+	Socket(addrinfo_p addrinfo) : info(move(addrinfo)) { };
+	Socket(int fd) : sock_fd(fd) { }; 
+	Socket(int fd, addrinfo_p addrinfo) : sock_fd(fd), info(move(addrinfo)) {};
+
 	~Socket();
 
-	// if the socket is created by hostname or addrinfo, we must call socket() at some point.
+	// Allows for setting a socket after the fact (for whatever reason)
+	void setaddrinfo(addrinfo_p new_info);
+
+	// Incomplete wrapper to set socket options. Doesn't support socket options
+	// that don't take an int.
+	void setsockopt(int optname, int value);
+
+	// returns the FD of the socket. Not sure why you'd want this.
+	int get_socket() { return sock_fd; };
+
+	// actually calls the socket() call, creating the file descriptor.
 	void open();
 
+
+	// initiate a connection with the stored addrinfo
 	void connect();
+
 	// Send a sequence of NetworkPackets to the connection.
-	void send(std::vector<uint8_t>& buf);
+	int send(std::vector<uint8_t>& buf);
 
 	// receive Packets.
-	void recv(std::vector<uint8_t>& buf);
+	int recv(std::vector<uint8_t>& buf);
 
 	// bind to address
 	void bind();
@@ -62,7 +98,7 @@ class Socket {
 	void listen();
 
 	// take a new connection request, accept it, and return a new socket for this connection.
-	std::unique_ptr<Socket> accept();
+	Socket accept();
 
 	// we can manually close the socket for whatever reason. automatically called by the destructor.
 	void close();
