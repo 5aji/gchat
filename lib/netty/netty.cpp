@@ -8,7 +8,7 @@ std::string inet_ntop(int af, struct addrinfo& addr) {
 	char result[256];
 	auto res = ::inet_ntop(af, addr.ai_addr, result, addr.ai_addrlen);
 	if (res == nullptr) {
-		throw std::system_error(errno, std::generic_category(), "inet_ntop() failed:");
+		throw std::system_error(errno, std::generic_category(), "inet_ntop() failed");
 	}
 
 	return std::string(result);
@@ -66,7 +66,7 @@ void Socket::open() {
 	sock_fd = ::socket(info->ai_family, info->ai_socktype, info->ai_protocol);
 
 	if (sock_fd == -1) {
-		throw std::system_error(errno, std::generic_category(), "socket() failed:");
+		throw std::system_error(errno, std::generic_category(), "socket() failed");
 	}
 }
 
@@ -90,7 +90,7 @@ void Socket::bind() {
 	int result = ::bind(sock_fd, info->ai_addr, info->ai_addrlen);
 
 	if (result == -1) {
-		throw std::system_error(errno, std::generic_category(), "bind() failed:");
+		throw std::system_error(errno, std::generic_category(), "bind() failed");
 	}
 }
 
@@ -99,7 +99,7 @@ void Socket::listen() {
 	int result = ::listen(sock_fd, 20); // TODO: set a different backlog?
 
 	if (result == -1) {
-		throw std::system_error(errno, std::generic_category(), "listen() failed:");
+		throw std::system_error(errno, std::generic_category(), "listen() failed");
 	}
 
 }
@@ -109,7 +109,7 @@ Socket Socket::accept() {
 	addrinfo_p new_info = make_addrinfo(false);
 	int result = ::accept(sock_fd, new_info->ai_addr, &new_info->ai_addrlen);
 	if (result == -1) {
-		throw std::system_error(errno, std::generic_category(), "accept() failed:");
+		throw std::system_error(errno, std::generic_category(), "accept() failed");
 	}	
 	return Socket(result, move(new_info));
 }
@@ -118,14 +118,14 @@ void Socket::connect() {
 	// TODO: traverse the linked list for more results if connection fails.
 	int result = ::connect(sock_fd, info->ai_addr, info->ai_addrlen);
 	if (result == -1) {
-		throw std::system_error(errno, std::generic_category(), "connect() failed:");
+		throw std::system_error(errno, std::generic_category(), "connect() failed");
 	}
 }
 
 int Socket::recv(std::vector<uint8_t>& buf) {
 	int bytes = ::recv(sock_fd, buf.data(), buf.size(), 0);
 	if (bytes == -1) {
-		throw std::system_error(errno, std::generic_category(), "recv() failed:");
+		throw std::system_error(errno, std::generic_category(), "recv() failed");
 	}
 	return bytes;
 }

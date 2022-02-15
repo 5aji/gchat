@@ -2,30 +2,27 @@
 CC:=gcc
 CXX:=g++
 
-SRC_DIR := src/
-LIB_DIR := lib/
-CPPFLAGS+= -MMD -std=c++17 # modern C++ with auto dependency generation.
-
-LIBS := $(SRC_DIR)$(LIB_DIR) # a list of library folders.
+SRC_DIR := src
+LIB_DIR := lib
+BIN_DIR := bin
+CPPFLAGS+= -MMD -std=c++17 # modern C++ + auto dependency generation.
 
 # we have to add the lib folders to the -I flags.
-CPPFLAGS += $(patsubst %, -I%, $(LIBS))
+CPPFLAGS += -I$(LIB_DIR)/
 
-LIB_FILES := $(wildcard src/lib/*/*.cpp)
-.PHONY: server all
+LIB_FILES := $(wildcard $(LIB_DIR)/**/*.cpp)
+.PHONY: all clean 
 
 # compile library files.
-all: client server
-
-
+all: bin/client
 # client files
-CLIENT_FILES = $(wildcard src/client/*.cpp)
-client: $(LIB_FILES:%.cpp=%.o) $(CLIENT_FILES:%.cpp=%.o)
+CLIENT_FILES := $(wildcard $(SRC_DIR)/client/*.cpp)
+$(BIN_DIR)/client: $(LIB_FILES:.cpp=.o) $(CLIENT_FILES:.cpp=.o)
 	$(CXX) -o $@ $(CPPFLAGS) $^
 
 server: 
 
-clean: $(LIB_FILES:%.cpp=%.d) $(CLIENT_FILES:%.cpp=%.d) $(LIB_FILES:%.cpp=%.o) $(CLIENT_FILES:%.cpp=%.o)
+clean: $(wildcard ./**/*.d) $(wildcard ./**/*.o) $(wildcard $(BIN_DIR)/*)
 	rm $^
 
 -include $(LIB_FILES:%.cpp=%.d) $(CLIENT_FILES:%.cpp=%.d)

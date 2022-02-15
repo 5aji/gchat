@@ -3,5 +3,5 @@ compile_commands.json
 
 *.d
 *.o
-client
-server
+
+bin/

@@ -6,9 +6,9 @@ int main() {
 
 	
 
-	auto gotten = Netty::getaddrinfo("localhost", "5555", false);
+	Netty::addrinfo_p gotten = Netty::getaddrinfo("localhost", "5555", false);
 
-	auto sock = Netty::Socket(move(gotten));
+	Netty::Socket sock = Netty::Socket(move(gotten));
 
 	sock.open();
 	sock.connect();
@@ -18,6 +18,6 @@ int main() {
 	std::vector<uint8_t> vec(message.begin(), message.end());
 
 
-	sock.send(vec);
+	sock.send(vec); // send data!
 	return -1;
 }
