@@ -11,6 +11,7 @@
 #include <map>
 #include <system_error>
 #include <unistd.h>
+#include "filedes.hpp"
 namespace polly {
 
 // One of the challenges is reconstructing a list of "things" that represent underlying file
@@ -38,15 +39,14 @@ namespace polly {
 
 // A simplified Epoll wrapper. It uses a file descriptor wrapper class that has a get_fd() method.
 // It doesn't support modification of the existing fds stored. 
-template<typename T>
-class Epoll {
+class Epoll : FileDes {
 	int epoll_fd = -1;
 	// the lut contains a bunch of weak_ptrs to the wrappers.
-	std::map<int, std::weak_ptr<T>> lut;
+	std::map<int, std::weak_ptr<FileDes>> lut;
 	// A response for wait(). It just has a pointer to the
 	// original instance as well as the event that occured.
 	typedef struct {
-		std::weak_ptr<T> object;
+		std::weak_ptr<FileDes> object;
 		uint32_t events;
 	} event_result;
 	public:
@@ -62,15 +62,18 @@ class Epoll {
 
 	~Epoll(){ close(); };
 
+	// returns the epoll file descriptor.
+	int get_fd() { return epoll_fd; };
+
 	// Closes the epoll file descriptor. Also clears the internal look up table.
 	void close() {
 		lut.clear();
 		::close(epoll_fd);
 	};
 
-	void add_item(std::shared_ptr<T> item, uint32_t events) {
+	void add_item(std::shared_ptr<FileDes> item, uint32_t events) {
 		int item_fd = item->get_fd(); // this is where the next addition will go.
-		struct epoll_event ev;
+		epoll_event ev;
 		ev.events = events;
 		ev.data.fd = item_fd;
 		int result = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, item_fd, &ev);
@@ -83,7 +86,7 @@ class Epoll {
 
 	// same as add_item, but for a vector of items. uses the same events list for all
 	// items, so if you want more fine-grained control, you'll have to split it up.
-	void add_items(std::vector<std::shared_ptr<T>> items, uint32_t events) {
+	void add_items(std::vector<std::shared_ptr<FileDes>> items, uint32_t events) {
 		for (auto item : items) {
 			add_item(item, events);
 		}
@@ -103,9 +106,7 @@ class Epoll {
 		std::vector<event_result> results{};
 		for(int i = 0; i < nevents; i++) {
 			auto evnt = events.at(i);
-			event_result my_result {};
-			my_result.object = lut.at(evnt.data.fd);
-			my_result.events = evnt.events;
+			event_result my_result {lut.at(evnt.data.fd), evnt.events};
 			results.push_back(my_result);
 		}
 
@@ -117,7 +118,7 @@ class Epoll {
 	
 	// Removes an item from the epoll interest list. If it's already gone, it won't throw
 	// an exeception.
-	void delete_item(std::shared_ptr<T> item) {
+	void delete_item(std::shared_ptr<FileDes> item) {
 		// clear it from lut
 		lut.erase(item->get_fd());
 

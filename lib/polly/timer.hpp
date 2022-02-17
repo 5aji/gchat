@@ -3,12 +3,13 @@
 
 #include <sys/timerfd.h>
 #include <memory>
+#include "filedes.hpp"
 namespace polly {
 
 
 // The timer class uses the linux timerfd system to expose an epoll-compatible
 // timer API for multiplexed I/O applications. It can be used for either
-class Timer {
+class Timer : FileDes {
 	int timer_fd = -1;
 
 	public:

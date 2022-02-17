@@ -5,6 +5,7 @@
 #include <netdb.h>
 #include <vector>
 #include <memory>
+#include "polly/filedes.hpp"
 namespace Netty {
 
 
@@ -46,7 +47,7 @@ addrinfo_p make_addrinfo(bool passive) noexcept;
 // A Socket is the base class for network communication. It wraps the linux
 // socket api in a safe manner. It helps set up connections and performs
 // error checking for all operations using C++ exceptions.
-class Socket {
+class Socket : polly::FileDes {
 	int sock_fd = -1;
 	addrinfo_p info = nullptr;
 
