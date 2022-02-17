@@ -3,15 +3,8 @@
 #pragma once
 #include <sys/socket.h>
 #include <netdb.h>
-#include <string>
 #include <vector>
 #include <memory>
-#include <system_error>
-#include <exception>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <cstring>
-
 namespace Netty {
 
 
@@ -74,6 +67,9 @@ class Socket {
 	// Incomplete wrapper to set socket options. Doesn't support socket options
 	// that don't take an int.
 	void setsockopt(int optname, int value);
+
+	// set nonblocking to `mode`.
+	void setnonblocking(bool mode);
 
 	// returns the FD of the socket. Not sure why you'd want this.
 	int get_socket() { return sock_fd; };

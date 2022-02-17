@@ -10,6 +10,7 @@
 #include <vector>
 #include <map>
 #include <system_error>
+#include <unistd.h>
 namespace polly {
 
 // One of the challenges is reconstructing a list of "things" that represent underlying file
@@ -30,71 +31,92 @@ namespace polly {
 // which contains a weak_ptr (leave handling lock to caller) as well as a uint32_t for events. This
 // way makes it easier to handle the wait call.
 
-template<class T>
+// The brilliant part of templates is that this code will work for any file descriptor wrapper that
+// has a function `get_fd()`. So if I make an inotify wrapper, I can use the same Epoll library if I
+// add a  get_fd method. Likewise for all the other file descriptors that epoll can support (NOT a
+// real file on the filesystem, however. That's not supported by epoll or this class).
+
+// A simplified Epoll wrapper. It uses a file descriptor wrapper class that has a get_fd() method.
+// It doesn't support modification of the existing fds stored. 
+template<typename T>
 class Epoll {
 	int epoll_fd = -1;
-	// the lut contains a bunch of weak_ptrs to 
+	// the lut contains a bunch of weak_ptrs to the wrappers.
 	std::map<int, std::weak_ptr<T>> lut;
-	using event_result = struct {
+	// A response for wait(). It just has a pointer to the
+	// original instance as well as the event that occured.
+	typedef struct {
 		std::weak_ptr<T> object;
 		uint32_t events;
-	};
+	} event_result;
 	public:
 
+	// Create a new Epoll file descriptor. It uses
+	// the EPOLL_CLOEXEC flag to prevent issues when forking, making
+	// it safer to use in multiprocess systems.
 	Epoll() {
 		epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	};
 	// I'm not sure why you'd want this, but okay.
 	Epoll(int fd) : epoll_fd(fd) {};
+
 	~Epoll(){ close(); };
 
-	// Closes the epoll file descriptor. Will be called automatically.
+	// Closes the epoll file descriptor. Also clears the internal look up table.
 	void close() {
-		close(epoll_fd);
+		lut.clear();
+		::close(epoll_fd);
 	};
 
 	void add_item(std::shared_ptr<T> item, uint32_t events) {
-		int index = item->get_fd(); // this is where the next addition will go.
-		auto ev = std::make_unique<epoll_event>(events, index);
-		int result = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, index, ev.get());
+		int item_fd = item->get_fd(); // this is where the next addition will go.
+		struct epoll_event ev;
+		ev.events = events;
+		ev.data.fd = item_fd;
+		int result = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, item_fd, &ev);
 		if (result == -1) {
 			throw std::system_error(errno, std::generic_category(), "epoll_ctl() failed");
 		}
 		// it didn't fail, so we add our new guy to the lut.
-		lut.emplace(index, item);
+		lut.emplace(item_fd, item);
 	};
 
 	// same as add_item, but for a vector of items. uses the same events list for all
+	// items, so if you want more fine-grained control, you'll have to split it up.
 	void add_items(std::vector<std::shared_ptr<T>> items, uint32_t events) {
 		for (auto item : items) {
 			add_item(item, events);
 		}
 	}
 
-	// blocks until events occur.
+	// Wait for any events to occur. If timeout is -1, will block forever.
+	// Will return a list of structs containing a pointer to the original object,
+	// as well as the event that occured. See Epoll::event_result for more details.
 	std::vector<event_result> wait(int timeout) {
-		std::array<epoll_event, 100> events; // We can change this value later, but I doubt it will be needed.
-
+		std::array<struct epoll_event, 100> events; // We can change this value later, but I doubt it will be needed.
 		int nevents = epoll_wait(epoll_fd, events.data(), 100, timeout);
 
 		if (nevents == -1) {
 			throw std::system_error(errno, std::generic_category(), "epoll_wait() failed");
 		}
 		// we have events! let's turn them into a list of event_results.
-		std::vector<event_result> results;
+		std::vector<event_result> results{};
 		for(int i = 0; i < nevents; i++) {
 			auto evnt = events.at(i);
-			results.emplace(lut.at(evnt.data.fd), evnt.events);
+			event_result my_result {};
+			my_result.object = lut.at(evnt.data.fd);
+			my_result.events = evnt.events;
+			results.push_back(my_result);
 		}
 
-
-		return results;
-
+		return results; // this can be empty, it doesn't matter.
 
 	}
-	// TODO: Modify item?
+	// TODO: Modify item? not sure how that'd work.
 	
-	// Removes an item from the epoll watch list.
+	
+	// Removes an item from the epoll interest list. If it's already gone, it won't throw
+	// an exeception.
 	void delete_item(std::shared_ptr<T> item) {
 		// clear it from lut
 		lut.erase(item->get_fd());
