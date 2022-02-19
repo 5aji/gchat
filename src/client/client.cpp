@@ -29,27 +29,34 @@ int main() {
 
 
 	/* sock->send(vec); // send data! */
-
+	int my_val = 0;
 	auto timer1 = std::make_shared<polly::Timer>();
 	timer1->setnonblocking(true);
 	timer1->settime(3, 0, false);
+	timer1->set_handler([&my_val](polly::Timer& t, int events) {
+			t.read();
+			std::cout << my_val << "hi from timer 1\n";
+			});
 
 	auto timer2 = std::make_shared<polly::Timer>();
 	timer2->setnonblocking(true);
 	timer2->settime(5, 0, false);
-	auto epoll = polly::Epoll<polly::Timer>();
+	timer2->set_handler([&my_val](polly::Timer& t, int events) {
+			t.read();
+			if (my_val > 5) my_val = 0;
+			std::cout << "hi from timer 2 \n";
+			});
 
-	epoll.add_item(timer1, EPOLLIN);
-	
+	auto epoll = polly::Epoll();
+
+	epoll.add_item(timer1, EPOLLIN);	
 	epoll.add_item(timer2, EPOLLIN);
+
 	while (1) {
 		std::cout << "waiting..." << std::endl;
-		auto results = epoll.wait(-1);
+		epoll.wait(-1);
 		std::cout << "got something" << std::endl;
-		for (auto i : results) {
-			auto timmy = i.object.lock();
-			std::cout << "fd:" << timmy->get_fd() << " read(): " << timmy->read() << std::endl;
-		}
+		my_val++;
 	}
 
 	std::cout << "done" << std::endl;

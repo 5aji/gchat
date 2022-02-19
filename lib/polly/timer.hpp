@@ -1,6 +1,7 @@
 // timer.hpp - example Epoll compatible wrapper for timerfd
 // (c) Saji Champlin 2022
 
+#pragma once
 #include <sys/timerfd.h>
 #include <memory>
 #include "filedes.hpp"
@@ -9,21 +10,15 @@ namespace polly {
 
 // The timer class uses the linux timerfd system to expose an epoll-compatible
 // timer API for multiplexed I/O applications. It can be used for either
-class Timer : FileDes {
-	int timer_fd = -1;
+class Timer : public FileDes<Timer> {
 
 	public:
-	Timer() : Timer(CLOCK_REALTIME, 0) {};
-	Timer(int clockid, int flags);
+	Timer(int clockid = CLOCK_REALTIME, int flags = 0);
+	// keep our copy ctor and move ctor (assignment is inherited)
+	Timer(const Timer& other) : FileDes(other) {};
 
-	~Timer();
-
-	// return the underlying fd, fulfilling the Epoll requirement.
-	int get_fd();
-
-	// Set nonblocking to `mode`
-	void setnonblocking(bool mode);
-
+	Timer(Timer&& other) : FileDes(other) {};
+	
 	// Disable the timer, but keep the descriptor open. Useful
 	// if you want to keep a timer allocated but don't want it to activate.
 	void disarm();
@@ -41,6 +36,7 @@ class Timer : FileDes {
 	// returns the number of expirations (triggers) that have occurred
 	// since the last read() or settime();
 	uint64_t read();
+	
 };
 
 }

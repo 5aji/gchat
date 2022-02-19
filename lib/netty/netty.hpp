@@ -15,7 +15,6 @@ namespace Netty {
 std::string inet_ntop(struct addrinfo& addr); 
 /* std::string inet_ntop(int family, struct sockaddr& addr, socklen_t addrlen); */
 
-
 // ======== addrinfo stuff =========
 
 // this is a helper class for managing the lifecycle of a addrinfo struct.
@@ -25,7 +24,6 @@ struct addrinfo_deleter {
 		freeaddrinfo(info);
 	}
 };
-
 
 // Wrapper class to help with addrinfo memory safety. When using this,
 // C++ will ensure that the struct is freed properly after it leaves scope.
@@ -43,24 +41,27 @@ addrinfo_p getaddrinfo(std::string node, std::string service, bool passive);
 // Create a new addrinfo struct with sane defaults (TCP and either ipv6 or ipv4)
 addrinfo_p make_addrinfo(bool passive) noexcept;
 
-
 // A Socket is the base class for network communication. It wraps the linux
 // socket api in a safe manner. It helps set up connections and performs
 // error checking for all operations using C++ exceptions.
-class Socket : polly::FileDes {
-	int sock_fd = -1;
+class Socket : public polly::FileDes<Socket> {
 	addrinfo_p info = nullptr;
 
-	// internal function
-	bool islistening();
-
+	
+	// private constructor for accept() *only*
+	Socket(int new_fd, addrinfo_p addrinfo): info(move(addrinfo)) {
+		fd = new_fd;
+	}
+	// actually calls the socket() call, creating the file descriptor.
+	void open();
 	public:
-	Socket(): sock_fd(-1), info(nullptr) { }; // null addrinfo 
-	Socket(addrinfo_p addrinfo) : info(move(addrinfo)) { };
-	Socket(int fd) : sock_fd(fd) { }; 
-	Socket(int fd, addrinfo_p addrinfo) : sock_fd(fd), info(move(addrinfo)) {};
-
-	~Socket();
+	Socket(): info(make_addrinfo(false))  {
+		open();
+	};
+	Socket(addrinfo_p addrinfo) : info(move(addrinfo)) { open(); };
+	Socket(const Socket& other) : FileDes(other), info(other.info.get()) {}
+	Socket(Socket&& other) : FileDes(other), info(std::move(other.info)) {}
+	
 
 	// Allows for setting a socket after the fact (for whatever reason)
 	void setaddrinfo(addrinfo_p new_info);
@@ -68,16 +69,6 @@ class Socket : polly::FileDes {
 	// Incomplete wrapper to set socket options. Doesn't support socket options
 	// that don't take an int.
 	void setsockopt(int optname, int value);
-
-	// set nonblocking to `mode`.
-	void setnonblocking(bool mode);
-
-	// returns the FD of the socket. Not sure why you'd want this.
-	int get_socket() { return sock_fd; };
-
-	// actually calls the socket() call, creating the file descriptor.
-	void open();
-
 
 	// initiate a connection with the stored addrinfo
 	void connect();
@@ -97,21 +88,6 @@ class Socket : polly::FileDes {
 	// take a new connection request, accept it, and return a new socket for this connection.
 	Socket accept();
 
-	// we can manually close the socket for whatever reason. automatically called by the destructor.
-	void close();
-
-};
-
-// A ServerSocket is a socket with additional tooling to help with a server type architecture.
-// ServerSockets can bind and listen for connections more easily.
-class ServerSocket: Socket {
-
-};
-
-
-// A ClientSocket is a socket designed to initiate a connection with a server.
-// It includes tools to help connecting to a server.
-class ClientSocket: Socket {
 
 };
 

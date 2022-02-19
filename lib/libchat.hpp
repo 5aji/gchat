@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <vector>
 #include <cstddef>
-#include "netty.hpp"
+#include "lib/netty/netty.hpp"
 #define FILE_BLOCKSIZE 2048
 // Enum message types which are stored in the header.
 enum message_t:char {
