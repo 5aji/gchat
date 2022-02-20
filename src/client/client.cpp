@@ -7,10 +7,6 @@
 #include "polly/timer.hpp"
 #include <memory>
 
-using test = struct {
-	int a;
-	int b;
-};
 int main() {
 
 	/* auto epoll = polly::Epoll<Netty::Socket>(); */
