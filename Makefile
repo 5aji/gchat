@@ -14,15 +14,19 @@ LIB_FILES := $(wildcard $(LIB_DIR)/**/*.cpp)
 .PHONY: all clean 
 
 # compile library files.
-all: bin/client
+all: bin/client bin/server
 # client files
 CLIENT_FILES := $(wildcard $(SRC_DIR)/client/*.cpp)
 $(BIN_DIR)/client: $(LIB_FILES:.cpp=.o) $(CLIENT_FILES:.cpp=.o)
 	$(CXX) -o $@ $(CPPFLAGS) $^
 
-server: 
+SERVER_FILES := $(wildcard $(SRC_DIR)/server/*.cpp)
+$(BIN_DIR)/server: $(LIB_FILES:.cpp=.o) $(SERVER_FILES:.cpp=.o)
+	$(CXX) -o $@ $(CPPFLAGS) $^
 
-clean: $(wildcard ./**/*.d) $(wildcard ./**/*.o) $(wildcard $(BIN_DIR)/*)
+ALL_FILES := $(LIB_FILES) $(SERVER_FILES) $(CLIENT_FILES)
+
+clean: $(ALL_FILES:.cpp=.o) $(ALL_FILES:.cpp=.d) $(wildcard $(BIN_DIR)/*)
 	rm $^
 
--include $(LIB_FILES:%.cpp=%.d) $(CLIENT_FILES:%.cpp=%.d)
+-include $(ALL_FILES:.cpp=.d)
