@@ -14,32 +14,37 @@
 #include "filedes.hpp"
 namespace polly {
 
-// One of the challenges is reconstructing a list of "things" that represent underlying file
-// descriptors. In our case, since we use the Netty::Socket abstraction layer, we can't just store
-// the fd in the epoll_event structure, since it might be closed when we try to reconstruct it if
-// the Socket leaves scope. But then, we *also* can't store a void* to the Socket itself, since if
-// it leaves scope, that pointer will be broken and isn't safe memory usage.
+// One of the challenges is reconstructing a list of "things" that represent
+// underlying file descriptors. In our case, since we use the Netty::Socket
+// abstraction layer, we can't just store the fd in the epoll_event structure,
+// since it might be closed when we try to reconstruct it if the Socket leaves
+// scope. But then, we *also* can't store a void* to the Socket itself, since
+// if it leaves scope, that pointer will be broken and isn't safe memory usage.
 
-// So what's the solution? The best way I can think of is to use shared pointers and a map of
-// weak_ptr stored in the Epoll class. Then, when it comes to adding a thing (Socket), we take a
-// weak pointer to it, add the weak pointer to our map, *and then store the key with the
-// epoll_event*. This way, when it comes time to reconstruct, we can middleman the returned
-// epoll_event and get the index out, and look up the key to get the weak_ptr, which we can easily
-// runtime-check using lock(). It could also be a shared_ptr, which would cause it to never leave
-// scope.
+// So what's the solution? The best way I can think of is to use shared
+// pointers and a map of weak_ptr stored in the Epoll class. Then, when it
+// comes to adding a thing (Socket), we take a weak pointer to it, add the weak
+// pointer to our map, *and then store the key with the epoll_event*. This way,
+// when it comes time to reconstruct, we can middleman the returned epoll_event
+// and get the index out, and look up the key to get the weak_ptr, which we can
+// easily runtime-check using lock(). It could also be a shared_ptr, which
+// would cause it to never leave scope.
 
-// One challenge is making the wrapper work with multiple different file descriptors, and handling
-// them in unique ways. Initially this code used templates, and as long as the template class
-// had a get_fd function the code would work. However, 
+// One challenge is making the wrapper work with multiple different file
+// descriptors, and handling them in unique ways. Initially this code used
+// templates, and as long as the template class had a get_fd function the code
+// would work. However, 
 
-// another issue is handling the return of epoll_wait, which returns the event that happened plus
-// the associated data that it happened to. Since we have the map of fd -> weak_ptr<FileDes>, we can
-// use that to get the underlying object. However, we *don't* know what it is. Is it a Socket?
-// Timer? something else entirely? who knows. To get around this, and prevent slow, bad RTTI,
-// instead of trying to type check, we can just call a virtual function .handle() on the object
-// behind the weak_ptr. This way it will be smart and use the one it needs to. The downside to
-// this approach is that the code must be structured in an odd way, and we must extend one of
-// the file descriptor classes to add custom behavior.
+// another issue is handling the return of epoll_wait, which returns the event
+// that happened plus the associated data that it happened to. Since we have
+// the map of fd -> weak_ptr<FileDes>, we can use that to get the underlying
+// object. However, we *don't* know what it is. Is it a Socket? Timer?
+// something else entirely? who knows. To get around this, and prevent slow,
+// bad RTTI, instead of trying to type check, we can just call a virtual
+// function .handle() on the object behind the weak_ptr. This way it will be
+// smart and use the one it needs to. The downside to this approach is that the
+// code must be structured in an odd way, and we must extend one of the file
+// descriptor classes to add custom behavior.
 
 
 // A simplified Epoll wrapper. It uses a file descriptor wrapper class that has a get_fd() method.
@@ -47,7 +52,7 @@ namespace polly {
 class Epoll : public FileDes<Epoll> {
 	int fd = -1;
 	// the lut contains a bunch of weak_ptrs to the wrappers.
-	std::map<int, std::weak_ptr<AbstractFileDes>> lut;
+	std::map<int, std::shared_ptr<AbstractFileDes>> lut;
 
 	// A response from wait(). It just has a pointer to the
 	// original instance as well as the events that have happened
@@ -110,7 +115,7 @@ public:
 		// we have events! let's turn them into a list of event_results.
 		for(int i = 0; i < nevents; i++) {
 			auto evnt = events.at(i);
-			lut.at(evnt.data.fd).lock()->handle(evnt.events);
+			lut.at(evnt.data.fd)->handle(evnt.events);
 		}
 
 
@@ -119,15 +124,16 @@ public:
 	
 	// Removes an item from the epoll interest list. If it's already gone, it won't throw
 	// an exeception.
-	void delete_item(std::shared_ptr<AbstractFileDes> item) {
-		// clear it from lut
-		lut.erase(item->get_fd());
-
-		int result = epoll_ctl(fd, EPOLL_CTL_DEL, item->get_fd(), nullptr);
+	void delete_item(AbstractFileDes& item) {
+		// NOTE: we have to remove from epoll before clearing from lut, since
+		// the lut removal might cause the fd wrapper to destruct, making the 
+		// fd invalid.
+		int result = epoll_ctl(fd, EPOLL_CTL_DEL, item.get_fd(), nullptr);
 
 		if (result == -1 && errno != ENOENT) { // if there's no entry, we don't care.
 			throw std::system_error(errno, std::generic_category(), "epoll_ctl() failed");
 		}
+		lut.erase(item.get_fd());
 	};
 };
 

@@ -65,6 +65,7 @@ public:
 	}
 	virtual ~AbstractFileDes() {close();}
 
+
 };
 
 // spicy sauce. adds type-specific information so we don't have to 
@@ -77,10 +78,10 @@ public:
 	using handler_t = std::function<void(T&, int)>;
 protected:
 	FileDes() = default;
-	FileDes(const FileDes& other) {
+	FileDes(const FileDes& other) { //copy constructor
 		fd = dup(other.fd);
 	};
-	FileDes(FileDes&& other) {
+	FileDes(FileDes&& other) { //move ctor
 		fd = other.fd;
 		other.fd = -1;
 	};
