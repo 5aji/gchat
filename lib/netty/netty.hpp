@@ -16,7 +16,8 @@ std::string inet_ntop(struct addrinfo& addr);
 /* std::string inet_ntop(int family, struct sockaddr& addr, socklen_t addrlen); */
 
 // ======== addrinfo stuff =========
-
+// TODO: Make addrinfo wrapper? override ++ to go to info->ai_next if available 
+// (like iterator). Could also add copy and move stuff.
 // this is a helper class for managing the lifecycle of a addrinfo struct.
 // it lets us use std::unique_ptr with it.
 struct addrinfo_deleter {
@@ -74,10 +75,13 @@ class Socket : public polly::FileDes<Socket> {
 	void connect();
 
 	// Send a sequence of NetworkPackets to the connection.
-	int send(std::vector<uint8_t>& buf);
+	int send(std::vector<std::byte>& buf);
 
 	// receive Packets.
-	int recv(std::vector<uint8_t>& buf);
+	std::vector<std::byte> recv(int size);
+	
+	// recv all packets, only works with nonblocking.
+	std::vector<std::byte> recv_all();
 
 	// bind to address
 	void bind();

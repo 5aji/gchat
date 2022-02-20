@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <system_error>
+#include <iostream>
+#include <assert.h>
 namespace Netty {
 
 
@@ -62,15 +64,38 @@ void Socket::connect() {
 	}
 }
 
-int Socket::recv(std::vector<uint8_t>& buf) {
+std::vector<std::byte> Socket::recv(int size) {
+	auto buf = std::vector<std::byte>(size);
 	int bytes = ::recv(fd, buf.data(), buf.size(), 0);
 	if (bytes == -1) {
 		throw std::system_error(errno, std::generic_category(), "recv() failed");
 	}
-	return bytes;
+	buf.resize(size);
+	return buf;
 }
 
-int Socket::send(std::vector<uint8_t>& buf) {
+std::vector<std::byte> Socket::recv_all() {
+	assert((fcntl(fd, F_GETFL) & O_NONBLOCK) != 0);
+	constexpr int block_size = 512;
+	std::vector<std::byte> result{};
+
+	std::byte data[block_size];
+	while (1) {
+		int bytes = ::recv(fd, data, block_size, 0);
+		if (bytes == 0) break; // this means it's closed.
+		if (bytes == -1) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				break;
+			}
+			throw std::system_error(errno, std::generic_category(), "recv() failed");
+		}
+		// bytes is how many bytes we recieved, add it to the result.
+		result.insert(result.end(), data, &data[bytes]);
+	}
+	return result;
+};
+
+int Socket::send(std::vector<std::byte>& buf) {
 	// this function is a bit harder, since we want to send all the data
 	// sometimes the send() call only sends part of it.
 	
