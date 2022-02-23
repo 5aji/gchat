@@ -2,29 +2,61 @@
 // (c) Saji Champlin 2022
 // don't actually use this for anything serious.
 // it's probably broken in several ways and will set your computer on fire.
-
+#include <iostream>
 #include <vector>
-#include <cstdint>
-#include <memory>
+#include <tuple>
+/* #include < */
+#define MAKE_SERIAL(...) 	\
+	constexpr auto members() const noexcept {	\
+		return std::tie(__VA_ARGS__);		\
+	}					\
+	constexpr auto members() noexcept {		\
+		return std::tie(__VA_ARGS__);		\
+	}					\
+
+
 namespace surreal {
 
-// We define a basic interface for a struct that can be serialized
-// and deserialized into bytes. Implementations will have to handle
-// network-ordering and such.
-struct Serializable {
-	virtual void serialize(std::vector<uint8_t>& buf);
-	virtual void deserialize(std::vector<uint8_t>& buf);
-	virtual ~Serializable();
+// we do a little bit of concepts
+template <typename T>
+concept Serializable = requires(T v) {
+	v.members();
 };
 
-// This type can be used to contain a list of Serializable structs.
+using databuf = std::vector<std::uint8_t>;
 
-using SerializableVec = std::vector<std::unique_ptr<Serializable>>;
+template <typename T>
+databuf& serialize(databuf& buf, T value);
 
-// This function takes a list of structs that implement Serializable
-// and returns a sequence of bytes that can be sent over the network.
-std::vector<uint8_t> serialize(SerializableVec structs);
+template <typename T>
+databuf& deserialize(databuf& buf, T& value);
 
-SerializableVec deserialize(std::vector<uint8_t> buf);
+template <Serializable T>
+databuf& serialize(databuf& buf, T object) {
 
 }
+
+template <Serializable T>
+databuf& deserialize(databuf& buf, T& object) {
+
+}
+
+
+template <Serializable T>
+std::ostream& operator << (std::ostream& os, T const& obj) {
+
+  std::apply([&os](auto const fst, auto const... rest) {
+    ((os << ", " << rest), ...);
+  }, obj.members());
+  return os;
+}
+
+struct TestObject {
+	int score = 0;
+	char letter = 'c';
+	MAKE_SERIAL(score,letter)
+};
+
+
+}
+
