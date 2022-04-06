@@ -64,8 +64,8 @@ void Socket::connect() {
 	}
 }
 
-std::vector<std::byte> Socket::recv(int size) {
-	auto buf = std::vector<std::byte>(size);
+std::vector<std::uint8_t> Socket::recv(int size) {
+	auto buf = std::vector<std::uint8_t>(size);
 	int bytes = ::recv(fd, buf.data(), buf.size(), 0);
 	if (bytes == -1) {
 		throw std::system_error(errno, std::generic_category(), "recv() failed");
@@ -74,12 +74,12 @@ std::vector<std::byte> Socket::recv(int size) {
 	return buf;
 }
 
-std::vector<std::byte> Socket::recv_all() {
+std::vector<std::uint8_t> Socket::recv_all() {
 	assert((fcntl(fd, F_GETFL) & O_NONBLOCK) != 0);
 	constexpr int block_size = 512;
-	std::vector<std::byte> result{};
+	std::vector<std::uint8_t> result{};
 
-	std::byte data[block_size];
+	std::uint8_t data[block_size];
 	while (1) {
 		int bytes = ::recv(fd, data, block_size, 0);
 		if (bytes == 0) break; // this means it's closed.
@@ -95,7 +95,7 @@ std::vector<std::byte> Socket::recv_all() {
 	return result;
 };
 
-int Socket::send(std::vector<std::byte>& buf) {
+int Socket::send(std::vector<std::uint8_t> const& buf) {
 	// this function is a bit harder, since we want to send all the data
 	// sometimes the send() call only sends part of it.
 	

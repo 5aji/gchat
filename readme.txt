@@ -17,15 +17,22 @@ and IPv6.
 Struture
 ============
 
-This project contains two libraries, both written specifically for this project
+This project contains three libraries, both written specifically for this project
 (they are not libraries I had lying around). The first library is a wrapper
 for the linux socket API to make it easier to handle. More details can be found
 in the lib/netty folder.
 
-The second library specifies the data structures used for the GopherChat protocol.
-Since the document doesn't have any requirements for the underlying protocol,
-this library contains structs and helper functions to facilitate communication
-between server and client.
+The second library is called `surreal` (like serial, for serialization).
+It is an advanced (but jank) serialization/deserialization library
+for C++20 that can convert structs, any list, and most data types
+to/from binary (not tested on floats). This is used as the backbone
+for the third library
+
+The third library uses the surreal library to implement a message framing
+system that contains data serialized by `surreal`. This whole packet is
+then serialized and sent over the network. There is a custom deserialization
+function that reads the message type and calls the correct deserializer
+(and allocates the correct sized byte array).
 
 
 Finally, there are two folders in the source directory, src/client and src/server.
@@ -43,6 +50,8 @@ proper TA testing.
 Execution
 ============
 
+Resulting binaries are placed into the bin/ folder, which will
+be created if it does not exist.
 
 
 

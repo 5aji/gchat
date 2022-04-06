@@ -5,6 +5,7 @@
 #include <iostream>
 #include "polly/polly.hpp"
 #include "polly/timer.hpp"
+#include "surreal/surreal.hpp"
 #include <memory>
 
 int main() {
@@ -47,6 +48,10 @@ int main() {
 
 	epoll.add_item(timer1, EPOLLIN);	
 	epoll.add_item(timer2, EPOLLIN);
+
+	auto test = surreal::TestObject();
+
+	/* std::cout << test << "\n"; */
 
 	while (1) {
 		std::cout << "waiting..." << std::endl;

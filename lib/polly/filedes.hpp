@@ -49,6 +49,7 @@ public:
 	virtual int get_fd() { return fd; }
 	virtual void close() { if (fd != -1) ::close(fd); }
 	virtual void setnonblocking(bool mode) {
+		if (fd == -1) return;
 		int flags = fcntl(fd, F_GETFL);
 		if (flags == -1) {
 			throw std::system_error(errno, std::generic_category(), "fcntl() failed:");

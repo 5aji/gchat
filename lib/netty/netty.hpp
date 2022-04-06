@@ -27,7 +27,8 @@ struct addrinfo_deleter {
 };
 
 // Wrapper class to help with addrinfo memory safety. When using this,
-// C++ will ensure that the struct is freed properly after it leaves scope.
+// C++ will ensure that the struct is freed properly after it leaves scope,
+// preventing memory leaks.
 using addrinfo_p =  std::unique_ptr<struct addrinfo, addrinfo_deleter>;
 
 // Helper function that calls getaddrinfo and handles creating the result pointer
@@ -56,12 +57,10 @@ class Socket : public polly::FileDes<Socket> {
 	// actually calls the socket() call, creating the file descriptor.
 	void open();
 	public:
-	Socket(): info(make_addrinfo(false))  {
-		open();
-	};
+	Socket(): info(make_addrinfo(false)) { open(); };
 	Socket(addrinfo_p addrinfo) : info(move(addrinfo)) { open(); };
-	Socket(const Socket& other) : FileDes(other), info(other.info.get()) {}
-	Socket(Socket&& other) : FileDes(other), info(std::move(other.info)) {}
+	Socket(const Socket& other) : FileDes(other), info(other.info.get()) {};
+	Socket(Socket&& other) : FileDes(other), info(std::move(other.info)) {};
 	
 
 	// Allows for setting a socket after the fact (for whatever reason)
@@ -75,13 +74,13 @@ class Socket : public polly::FileDes<Socket> {
 	void connect();
 
 	// Send a sequence of NetworkPackets to the connection.
-	int send(std::vector<std::byte>& buf);
+	int send(std::vector<std::uint8_t> const& buf);
 
 	// receive Packets.
-	std::vector<std::byte> recv(int size);
+	std::vector<std::uint8_t> recv(int size);
 	
 	// recv all packets, only works with nonblocking.
-	std::vector<std::byte> recv_all();
+	std::vector<std::uint8_t> recv_all();
 
 	// bind to address
 	void bind();
