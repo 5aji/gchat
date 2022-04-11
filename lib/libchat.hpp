@@ -12,7 +12,7 @@
 // the right protocol spec (no mismatching allowed).
 #define PROTOCOL_VERSION 0
 // Enum message types which are stored in the header.
-enum message_t:char {
+enum class message_t:char {
 	MSG_REGISTER = 0,
 	MSG_LOGIN,
 	MSG_LOGOUT,
@@ -26,38 +26,62 @@ enum message_t:char {
 	MSG_ENCRYPTED
 };
 
+template<class T>
+using entry = std::pair<message_t, T>;
+
+/* constexpr map = */ 
 
 
-
-// The messageframe contains 
-struct MsgFrame {
-	static constexpr std::byte version{0};
+// The messageframe contains a message type, a protocol version (for
+// simple checking purpose) and the actual message itself. the serialization
+// library will handle the variable-sized data vector. (it will be encoded).
+struct Frame {
+	char version = PROTOCOL_VERSION;
 	message_t type;
-	uint32_t size;
-	std::byte data[]; // the raw bytes for the payload.
-	// the program should use the message_t and size_t to allocate
-	// and deserialize the data.
-	template <surreal::Serializable T>
-	MsgFrame(T& object, message_t type) {
 
-	}
+	std::vector<std::uint8_t> data; // the actual data
+
+	// we use type to determine how to deserialize data.
+	// assuming that it works... surreal might need more error checking.
+	
+	MAKE_SERIAL(version,type,data);
 };
 
 struct MessagePacket  {
-	char message[256];
-	char username[8]; // who sent it
-	char destination[8]; // who should recieve it (empty for global)
+	std::array<char, 256> message;
+	std::array<char, 8> username;
+	std::array<char, 8> destination;
 };
 
 struct LoginPacket {
-	char username[8];
-	char password[8];
+	std::array<char, 8> username;
+	std::array<char, 8> password;
 };
 
 struct FilePacket {
 	uint32_t count;
-	uint8_t data[FILE_BLOCKSIZE];
-	uint8_t username[8];
-	uint8_t destination[8];
+	std::array<uint8_t, FILE_BLOCKSIZE> data;
+	std::array<char,8> username;
+	std::array<char,8> password;
 };
+
+
+Frame get_frame(std::vector<std::uint8_t> data) {
+	Frame frame = {};
+	// take data, deserialize it into frame.
+	auto buf = surreal::DataBuf(data.begin(), data.end());
+	buf.deserialize(frame);
+
+	if (frame.version != PROTOCOL_VERSION) {
+		throw std::runtime_error("Protocol version didn't match!");
+	}
+	return frame;
+}
+
+template<typename T>
+/* requires std::invocable<surreal::DataBuf::serialize, T> */
+Frame make_frame(T& object) {
+	Frame result = {};
+
+}
 

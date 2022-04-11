@@ -26,6 +26,7 @@ int main() {
 
 	// testing surreal
 	auto myBuf = surreal::DataBuf();
+
 	auto obj = surreal::TestObject{};
 
 	myBuf.serialize(obj);
@@ -55,6 +56,7 @@ int main() {
 			std::cout << "got a client msg\n";
 			auto data = s.recv_all();
 			ClientSession ses = client_sessions[s.get_fd()];
+			// parse data.
 			ses.count++;
 			s.send(myBuf);
 			client_sessions[s.get_fd()] = ses;

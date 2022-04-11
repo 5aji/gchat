@@ -15,13 +15,13 @@
 
 // a macro to generate variables containing all the member variables
 // of a struct. This way we can iterate over them at compile time.
-#define MAKE_SERIAL(...) 	\
+#define MAKE_SERIAL(...) 				\
 	constexpr auto members() const noexcept {	\
 		return std::tie(__VA_ARGS__);		\
-	}					\
+	}						\
 	constexpr auto members() noexcept {		\
 		return std::tie(__VA_ARGS__);		\
-	}					\
+	}
 
 
 namespace surreal {
@@ -50,6 +50,22 @@ public:
 	// then work fine. (if not a bit slow).
 	operator std::vector<std::uint8_t>(){
 		return std::vector<std::uint8_t>{data.begin(), data.end()};
+	}
+	DataBuf(){}; //empty buffer for creating packets.
+	template<typename I, typename S>
+	requires std::input_iterator<I> && std::sentinel_for<S,I>
+	DataBuf(I begin, S end): data(begin,end) {}
+
+
+	template<typename range>
+	requires std::ranges::range<range>
+	DataBuf(range r): data(std::ranges::begin(r), std::ranges::end(r)) {}
+
+	// serialize anything.
+	template<typename T>
+	requires (!std::same_as<T, DataBuf>) // don't override defaulted copy/move constructors.
+	DataBuf(T& object) {
+		serialize(object);
 	}
 
 	// now we define how to serialize and deserialize various data types.
@@ -191,15 +207,15 @@ public:
 	requires std::ranges::sized_range<T>
 	void deserialize(T& range){
 		// a bit funky.
-		std::size_t size;
+		std::ranges::range_size_t<T> size;
 		deserialize(size);
 		if (size > std::ranges::size(range)) {
 			// the range is too small. hopefully this never happens.
 			throw std::range_error("size of data larger than destination");
 		}
-
-		for (auto& value : range) {
-			deserialize(value);
+		auto inserter = std::ranges::begin(range);
+		for (int i = 0; i < size; i++) {
+			deserialize(inserter);
 		}
 	}
 
