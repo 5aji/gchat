@@ -1,66 +1,67 @@
 // Client main source.
 #include "netty/netty.hpp"
-#include <arpa/inet.h>
-#include <cstdio>
-#include <iostream>
 #include "polly/polly.hpp"
 #include "polly/timer.hpp"
 #include "surreal/surreal.hpp"
+#include <arpa/inet.h>
+#include <cstdio>
+#include <iostream>
 #include <memory>
 
 int main() {
 
-	/* auto epoll = polly::Epoll<Netty::Socket>(); */
+    Netty::addrinfo_p address = Netty::getaddrinfo("localhost", "5555", false);
 
-	/* Netty::addrinfo_p gotten = Netty::getaddrinfo("localhost", "5555", false); */
+    auto sock = std::make_shared<Netty::Socket>(move(address));
 
+    sock->connect();
 
-	/* auto sock = std::make_shared<Netty::Socket>(move(gotten)); */
+    sock->setnonblocking(true);
+    std::string message = "Hello world!";
 
-	/* sock->open(); */
-	/* sock->connect(); */
+    std::vector<uint8_t> vec(message.begin(), message.end());
 
-	/* std::string message = "Hello world!"; */
+    /* sock->send(vec); // send data! */
+    auto timer2 = std::make_shared<polly::Timer>();
+    timer2->setnonblocking(true);
+    timer2->settime(5, 0, false);
+    timer2->set_handler([&sock, &vec](polly::Timer &t, int events) {
+        t.read();
+        std::cout << "hi from timer 2 \n";
+        sock->send(vec);
+    });
 
-	/* std::vector<uint8_t> vec(message.begin(), message.end()); */
+    sock->set_handler([](Netty::Socket &s, int events) {
+        if (events & EPOLLIN) {
+            std::cout << "got a msg\n";
+            auto data = s.recv_all();
+            // the response is always a testobject.
+            for (auto val : data) {
+                std::cout << std::hex << (int)val << " ";
+            }
+            std::cout << std::endl << std::dec;
+            surreal::TestObject obj{};
+            auto buf = surreal::DataBuf(data.begin(), data.end());
+            buf.deserialize(obj);
+            std::cout << obj.test << std::endl;
+            /* std::cout << obj; */
+            // do nothing
+        }
+    });
 
+    auto epoll = polly::Epoll();
 
-	/* sock->send(vec); // send data! */
-	int my_val = 0;
-	auto timer1 = std::make_shared<polly::Timer>();
-	timer1->setnonblocking(true);
-	timer1->settime(3, 0, false);
-	timer1->set_handler([&my_val](polly::Timer& t, int events) {
-			t.read();
-			std::cout << my_val << "hi from timer 1\n";
-			});
+    epoll.add_item(timer2, EPOLLIN);
+    epoll.add_item(sock, EPOLLIN);
 
-	auto timer2 = std::make_shared<polly::Timer>();
-	timer2->setnonblocking(true);
-	timer2->settime(5, 0, false);
-	timer2->set_handler([&my_val](polly::Timer& t, int events) {
-			t.read();
-			if (my_val > 5) my_val = 0;
-			std::cout << "hi from timer 2 \n";
-			});
+    /* std::cout << test << "\n"; */
 
-	auto epoll = polly::Epoll();
+    while (1) {
+        std::cout << "waiting..." << std::endl;
+        epoll.wait(-1);
+    }
 
-	epoll.add_item(timer1, EPOLLIN);	
-	epoll.add_item(timer2, EPOLLIN);
+    std::cout << "done" << std::endl;
 
-	auto test = surreal::TestObject();
-
-	/* std::cout << test << "\n"; */
-
-	while (1) {
-		std::cout << "waiting..." << std::endl;
-		epoll.wait(-1);
-		std::cout << "got something" << std::endl;
-		my_val++;
-	}
-
-	std::cout << "done" << std::endl;
-
-	return 0;
+    return 0;
 }
