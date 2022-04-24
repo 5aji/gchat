@@ -2,6 +2,7 @@
 // (c) Saji Champlin 2022
 // don't actually use this for anything serious.
 // it's probably broken in several ways and will set your computer on fire.
+#pragma once
 #include <concepts>
 #include <cstring>
 #include <deque>
@@ -16,7 +17,7 @@
 // the hton stuff doesn't go up to 64 bits, which we want for std::size to work
 // easily. so we instead use htobe16 instead. The only consequence of this is
 // that the system no longer works if the network byte order is little endian
-// but it should work within itself.
+// but it should work within itself. also network byte order is big endian.
 
 // a macro to generate variables containing all the member variables
 // of a struct. This way we can iterate over them at compile time.
@@ -80,121 +81,14 @@ class DataBuf {
     }
 
     // now we define how to serialize and deserialize various data types.
+    // the order for this stuff is *important* since we don't declare then
+    // define. order of specializations determines which ones are preferred.
 
     // You'll notice the use of memcpy. This may seem stupid, but it's important
     // since it's the only way to reinterpret the exact bits of each type
     // without hell breaking loose (or UB/IB). You could technically use
     // reinterpret cast with address-of and pointer dereference but that's a lot
     // uglier IMO.
-
-    // first, for things that are the same size as uint8_t (int8_t, char)
-    // no need to byte swap things here.
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint8_t)) &&
-        std::integral<T> void serialize(T const &value) {
-        uint8_t tmp;
-        std::memcpy(&tmp, &value, sizeof(T));
-        data.emplace_back(tmp);
-    }
-
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint8_t)) &&
-        std::integral<T> void deserialize(T &value) {
-        auto tmp = data.front();
-        std::memcpy(&value, &tmp, sizeof(T));
-        data.pop_front();
-    }
-
-    // next is for 2 byte things, this uses htons and ntohs	to preserve byte
-    // ordering.
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint16_t)) &&
-        std::integral<T> void serialize(T const &value) {
-        uint16_t tmp;
-        std::memcpy(&tmp, &value, sizeof(T));
-        tmp = htobe16(tmp);
-        uint8_t bytes[sizeof(T)];
-        std::memcpy(&bytes, &tmp, sizeof(T));
-
-        for (int i = 0; i < sizeof(T); i++) {
-            data.emplace_back(bytes[i]);
-        }
-    }
-
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint16_t)) &&
-        std::integral<T> void deserialize(T &value) {
-        uint8_t bytes[sizeof(T)];
-        for (int i = 0; i < sizeof(T); i++) {
-            bytes[i] = data.front();
-            data.pop_front();
-        }
-        uint16_t tmp;
-        std::memcpy(&tmp, bytes, sizeof(T));
-        tmp = be16toh(tmp);
-        std::memcpy(&value, &tmp, sizeof(T));
-    }
-
-    // finally, 32bit things. at this point we write loops to keep things short.
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint32_t)) &&
-        std::integral<T> void serialize(T const &value) {
-        uint32_t tmp;
-        std::memcpy(&tmp, &value, sizeof(T));
-        tmp = htobe32(tmp);
-        uint8_t bytes[sizeof(T)];
-        std::memcpy(&bytes, &tmp, sizeof(T));
-
-        for (int i = 0; i < sizeof(T); i++) {
-            data.emplace_back(bytes[i]);
-        }
-    }
-
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint32_t)) &&
-        std::integral<T> void deserialize(T &value) {
-        uint8_t bytes[sizeof(T)];
-        for (int i = 0; i < sizeof(T); i++) {
-            bytes[i] = data.front();
-            data.pop_front();
-        }
-        uint32_t tmp;
-        std::memcpy(&tmp, bytes, sizeof(T));
-        tmp = be32toh(tmp);
-        std::memcpy(&value, &tmp, sizeof(T));
-    }
-
-    // and 64 bit things. To do this, we just split it in half and use the 32
-    // bit stuff.
-
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint64_t)) &&
-        std::integral<T> void serialize(T const &value) {
-        uint64_t tmp;
-        std::memcpy(&tmp, &value, sizeof(T));
-        tmp = htobe64(tmp);
-
-        uint8_t bytes[sizeof(T)];
-        std::memcpy(bytes, &tmp, sizeof(T));
-
-        for (int i = 0; i < sizeof(T); i++) {
-            data.emplace_back(bytes[i]);
-        }
-    }
-
-    template <typename T>
-    requires(sizeof(T) == sizeof(std::uint64_t)) &&
-        std::integral<T> void deserialize(T &value) {
-        uint8_t bytes[sizeof(T)];
-        for (int i = 0; i < sizeof(T); i++) {
-            bytes[i] = data.front();
-            data.pop_front();
-        }
-        uint64_t tmp;
-        std::memcpy(&tmp, bytes, sizeof(T));
-        tmp = be64toh(tmp);
-        std::memcpy(&value, &tmp, sizeof(T));
-    }
 
     // next, we define the struct functions. These rely on the struct having a
     // .members() method that returns a tuple of all the variables. See above
@@ -203,19 +97,13 @@ class DataBuf {
     // example of a similar application to generically print structs.
     template <has_members T> void serialize(T const &object) {
 
-        std::apply(
-            [&](auto const &...data) {
-                (serialize(data), ...);
-            },
-            object.members());
+        std::apply([&](auto const &...data) { (serialize(data), ...); },
+                   object.members());
     }
 
     template <has_members T> void deserialize(T &object) {
-        std::apply(
-            [&](auto &...data) {
-                (deserialize(data), ...);
-            },
-            object.members());
+        std::apply([&](auto &...data) { (deserialize(data), ...); },
+                   object.members());
     }
 
     template <typename T> void serialize(const std::vector<T> &vec) {
@@ -235,7 +123,7 @@ class DataBuf {
         for (int i = 0; i < size; i++) {
             T thing;
             deserialize(thing);
-            vec[i] = thing;
+            vec.emplace_back(thing);
         }
     }
 
@@ -264,6 +152,120 @@ class DataBuf {
             deserialize(thing);
             arr[i] = thing;
         }
+    }
+    // strings are just like vectors.
+    void serialize(const std::string &str) {
+        std::vector<std::uint8_t> vec(str.begin(), str.end());
+        serialize(vec);
+    }
+    void deserialize(std::string &str) {
+        std::vector<std::uint8_t> vec;
+        deserialize(vec);
+        str.assign(vec.begin(), vec.end());
+    }
+
+    // first, for things that are the same size as uint8_t (int8_t, char)
+    // no need to byte swap things here.
+    template <typename T>
+    requires(sizeof(T) == sizeof(std::uint8_t)) void serialize(T const &value) {
+        uint8_t tmp;
+        std::memcpy(&tmp, &value, sizeof(T));
+        data.emplace_back(tmp);
+    }
+
+    template <typename T>
+    requires(sizeof(T) == sizeof(std::uint8_t)) void deserialize(T &value) {
+        auto tmp = data.front();
+        std::memcpy(&value, &tmp, sizeof(T));
+        data.pop_front();
+    }
+
+    // next is for 2 byte things, this uses htons and ntohs	to preserve byte
+    // ordering.
+    template <typename T>
+    requires(sizeof(T) ==
+             sizeof(std::uint16_t)) void serialize(T const &value) {
+        uint16_t tmp;
+        std::memcpy(&tmp, &value, sizeof(T));
+        tmp = htobe16(tmp);
+        uint8_t bytes[sizeof(T)];
+        std::memcpy(&bytes, &tmp, sizeof(T));
+
+        for (int i = 0; i < sizeof(T); i++) {
+            data.emplace_back(bytes[i]);
+        }
+    }
+
+    template <typename T>
+    requires(sizeof(T) == sizeof(std::uint16_t)) void deserialize(T &value) {
+        uint8_t bytes[sizeof(T)];
+        for (int i = 0; i < sizeof(T); i++) {
+            bytes[i] = data.front();
+            data.pop_front();
+        }
+        uint16_t tmp;
+        std::memcpy(&tmp, bytes, sizeof(T));
+        tmp = be16toh(tmp);
+        std::memcpy(&value, &tmp, sizeof(T));
+    }
+
+    // finally, 32bit things. at this point we write loops to keep things short.
+    template <typename T>
+    requires(sizeof(T) ==
+             sizeof(std::uint32_t)) void serialize(T const &value) {
+        uint32_t tmp;
+        std::memcpy(&tmp, &value, sizeof(T));
+        tmp = htobe32(tmp);
+        uint8_t bytes[sizeof(T)];
+        std::memcpy(&bytes, &tmp, sizeof(T));
+
+        for (int i = 0; i < sizeof(T); i++) {
+            data.emplace_back(bytes[i]);
+        }
+    }
+
+    template <typename T>
+    requires(sizeof(T) == sizeof(std::uint32_t)) void deserialize(T &value) {
+        uint8_t bytes[sizeof(T)];
+        for (int i = 0; i < sizeof(T); i++) {
+            bytes[i] = data.front();
+            data.pop_front();
+        }
+        uint32_t tmp;
+        std::memcpy(&tmp, bytes, sizeof(T));
+        tmp = be32toh(tmp);
+        std::memcpy(&value, &tmp, sizeof(T));
+    }
+
+    // and 64 bit things. To do this, we just split it in half and use the 32
+    // bit stuff.
+
+    template <typename T>
+    requires(sizeof(T) ==
+             sizeof(std::uint64_t)) void serialize(T const &value) {
+        uint64_t tmp;
+        std::memcpy(&tmp, &value, sizeof(T));
+        tmp = htobe64(tmp);
+
+        uint8_t bytes[sizeof(T)];
+        std::memcpy(bytes, &tmp, sizeof(T));
+
+        for (int i = 0; i < sizeof(T); i++) {
+            data.emplace_back(bytes[i]);
+        }
+    }
+
+    template <typename T>
+    requires(sizeof(T) == sizeof(std::uint64_t)) void deserialize(T &value) {
+        uint8_t bytes[sizeof(T)];
+        for (int i = 0; i < sizeof(T); i++) {
+            bytes[i] = data.front();
+            data.pop_front();
+        }
+        uint64_t tmp;
+        std::memcpy(&tmp, bytes, sizeof(T));
+        tmp = be64toh(tmp);
+        std::memcpy(&value, &tmp, sizeof(T));
     }
 };
 

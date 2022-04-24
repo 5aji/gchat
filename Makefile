@@ -5,7 +5,7 @@ CXX:=g++
 SRC_DIR := src
 LIB_DIR := lib
 BIN_DIR := bin
-CPPFLAGS+= -MMD -std=c++20 -g
+CPPFLAGS+= -MMD -std=c++20 -Og -g
 
 # we have to add the lib folders to the -I flags.
 CPPFLAGS += -I$(LIB_DIR)/

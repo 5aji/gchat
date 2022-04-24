@@ -137,6 +137,20 @@ class Epoll : public FileDes<Epoll> {
         }
         lut.erase(item.get_fd());
     };
+
+    void set_events(AbstractFileDes &item, int events) {
+        int item_fd = item.get_fd();
+        epoll_event ev;
+        ev.events = events;
+        ev.data.fd = item_fd;
+        int result = epoll_ctl(fd, EPOLL_CTL_MOD, item_fd, &ev);
+        if (result == -1) {
+            throw std::system_error(errno, std::generic_category(),
+                                    "epoll_ctl() failed");
+        }
+
+        // already in the LUT, so no need to change anything.
+    }
 };
 
 } // namespace polly

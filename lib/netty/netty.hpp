@@ -72,13 +72,17 @@ class Socket : public polly::FileDes<Socket> {
     void connect();
 
     // Send a sequence of NetworkPackets to the connection.
-    int send(std::vector<std::uint8_t> const &buf);
+    int send(const std::vector<std::uint8_t> &buf);
 
     // receive Packets.
     std::vector<std::uint8_t> recv(int size);
 
     // recv all packets, only works with nonblocking.
     std::vector<std::uint8_t> recv_all();
+
+    std::vector<std::uint8_t> recv_delimited();
+
+    int send_delimited(const std::vector<std::uint8_t> &buf);
 
     // bind to address
     void bind();

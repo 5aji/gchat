@@ -1,12 +1,14 @@
 
 
 #include "netty.hpp"
+#include "surreal/surreal.hpp"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <iostream>
 #include <system_error>
 #include <unistd.h>
+
 namespace Netty {
 
 void Socket::open() {
@@ -70,14 +72,13 @@ std::vector<std::uint8_t> Socket::recv(int size) {
         throw std::system_error(errno, std::generic_category(),
                                 "recv() failed");
     }
-    buf.resize(size);
+    buf.resize(bytes);
     return buf;
 }
 
 std::vector<std::uint8_t> Socket::recv_all() {
-    assert((fcntl(fd, F_GETFL) & O_NONBLOCK) != 0);
-    constexpr int block_size = 512;
-    std::vector<std::uint8_t> result{};
+    constexpr int block_size = 4096;
+    std::vector<std::uint8_t> result;
 
     std::uint8_t data[block_size];
     while (1) {
@@ -114,6 +115,34 @@ int Socket::send(std::vector<std::uint8_t> const &buf) {
     }
 
     return sent;
+}
+
+constexpr char MAGIC_PACKET = 0xFE;
+int Socket::send_delimited(const std::vector<std::uint8_t> &buf) {
+    auto header = surreal::DataBuf();
+
+    header.serialize(MAGIC_PACKET);
+    header.serialize(std::size(buf));
+
+    int result = send(header);
+
+    result += send(buf);
+
+    return result;
+}
+
+std::vector<std::uint8_t> Socket::recv_delimited() {
+    auto header_buf = recv(sizeof(MAGIC_PACKET) + sizeof(std::size_t));
+    if (header_buf[0] != 0xFE) {
+        throw std::runtime_error("header didn't match, frame misalignment.");
+    }
+    auto header = surreal::DataBuf(header_buf.begin(), header_buf.end());
+    char dummy;
+    header.deserialize(dummy);
+    std::size_t payload_size;
+    header.deserialize(payload_size);
+
+    return recv(payload_size);
 }
 
 void Socket::setsockopt(int optname, int value) {
