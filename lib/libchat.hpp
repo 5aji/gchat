@@ -103,12 +103,13 @@ struct LoginPacket {
 
 struct FilePacket {
     bool eof = false;
-    std::vector<uint8_t> data;
+    std::string filename;
+    std::vector<char> data;
     shortstring username;
     shortstring destination;
     static constexpr auto max_size = 1024;
 
-    MAKE_SERIAL(eof, data, username, destination)
+    MAKE_SERIAL(eof, filename, data, username, destination)
 };
 
 // contains a list of users currently logged on.

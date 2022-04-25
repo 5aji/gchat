@@ -30,6 +30,63 @@ std::queue<std::pair<message_t, Packet_t>> ack_queue;
 // queue of frames.
 std::queue<Frame> send_queue;
 
+// takes a filename, opens the file, creates packets, etc etc. DOESN't work when not
+// logged in, since that would flood things pretty badly.
+void send_file(std::string filename, std::string destination) {
+    if (!auth_state.authed) return;
+
+    FilePacket tpl;
+    tpl.filename = filename;
+    tpl.username = auth_state.username;
+    tpl.destination = destination;
+
+    // now we open the file, read max bytes from it into a vector, copy our template,
+    // and push this new packet to the queue.
+
+    std::ifstream f(filename, std::ios::in | std::ios::binary);
+
+    std::vector<char> buf;
+
+    while (f.good()) {
+
+        buf.resize(FilePacket::max_size);
+
+        f.read(buf.data(), FilePacket::max_size);
+        // create packet
+        FilePacket datapack = tpl; //copy
+        buf.resize(f.gcount());
+        datapack.data = buf;
+        if (!f.good()) {
+            datapack.eof = true;
+        }
+        send_queue.push(make_frame(message_t::MSG_XFER, datapack));
+    }
+
+}
+
+std::map<std::string, std::ofstream> output_files;
+
+// handles opening/writing/closing files.
+void handle_files(const FilePacket& p) {
+    // check if ofstream exists. If it doesn't, open it.
+    auto fname = p.filename;
+
+    auto file = output_files.find(fname);
+    if (file == output_files.end()) {
+        // file handle doesn't exist yet, open it.
+        output_files[fname] = std::ofstream(fname, std::ios::out | std::ios::binary);
+    }
+
+    output_files.at(fname).write(p.data.data(), p.data.size());
+
+    if (p.eof) {
+        // fstream destructor closes, so this is safe.
+        output_files.erase(fname);
+    }
+
+}
+
+
 // file parser. returns an int, number of seconds to delay before calling again.
 // has 2 magic return values. -1 causes the parser to be run again, -2 disables the 
 // timer permanently.
@@ -100,9 +157,14 @@ int parseFile(std::ifstream &file) {
         send_queue.push(f);
         ack_queue.push(std::pair(message_t::MSG_SEND, packet));
     } else if (command == "SENDF") {
-        // TODO: send file to all"
+        std::string filename;
+        file >> filename;
+        send_file(filename, "");
     } else if (command == "SENDF2") {
-        // TODO: send file to single user
+        std::string destination;
+        std::string filename;
+        file >> destination >> filename;
+        send_file(filename, destination);
     } else if (command == "LIST") {
         auto f = make_frame(message_t::MSG_GETLIST);
         send_queue.push(f);
@@ -161,6 +223,10 @@ std::optional<Frame> serverHandler(message_t resp, Packet_t pkt) {
         print("Currently (" + std::to_string(message.users.size()) + ") users online:\n" + users); 
     }
     if (resp == message_t::MSG_XFER) {
+
+        auto message = std::get<FilePacket>(pkt);
+        handle_files(message);
+
     }
     return std::nullopt;
 }

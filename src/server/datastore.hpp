@@ -72,7 +72,23 @@ struct ServerData {
         };
         return std::find_if(user_database.begin(), user_database.end(), lamb);
     }
-    MAKE_SERIAL(user_database)
+
+    std::vector<MessagePacket> offline_msgs;
+
+    auto get_user_msgs(std::string user) {
+        auto lamb = [user](MessagePacket m) {
+            return m.destination == user;
+        };
+        return std::find_if(offline_msgs.begin(), offline_msgs.end(), lamb);
+    }
+    auto clear_user_msgs(std::string user) {
+        auto lamb = [user](MessagePacket m) {
+            return m.destination == user;
+        };
+        return offline_msgs.erase(std::remove_if(offline_msgs.begin(), offline_msgs.end(), lamb),
+                offline_msgs.end());
+    }
+    MAKE_SERIAL(user_database, offline_msgs)
 };
 
 

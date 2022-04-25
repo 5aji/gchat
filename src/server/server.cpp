@@ -73,6 +73,12 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         session->username = contents.username;
         // add username + session pointer.
         username_sessions[contents.username] = session;
+        // restore messages and clear them.
+        std::for_each(store.data.get_user_msgs(contents.username), store.data.offline_msgs.end(),
+                [&session](const MessagePacket& m){
+                    session->send_queue.push(make_frame(message_t::MSG_SEND, m));
+                });
+        store.data.clear_user_msgs(contents.username);
         return make_frame(message_t::MSG_OK);
     }
     if (msg == message_t::MSG_SEND) {
@@ -102,10 +108,41 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
                 username_sessions.at(contents.destination)
                     ->send_queue.push(message);
             } catch (std::out_of_range &e) {
-                return make_frame(message_t::ERR_NOSUCHUSER);
+                if (store.data.find_user(contents.destination) != store.data.user_database.end()) {
+                   store.data.offline_msgs.push_back(contents); 
+                } else {
+                    return make_frame(message_t::ERR_NOSUCHUSER);
+                }
             }
         }
         return make_frame(message_t::MSG_OK);
+    }
+    if (msg == message_t::MSG_XFER) {
+        if (!session->authed) {
+            return make_frame(message_t::ERR_NOLOGIN);
+        }
+
+        auto contents = std::get<FilePacket>(pkt);
+        if (contents.username != session->username && contents.username != "") {
+            return make_frame(message_t::ERR_NOPERMS);
+        }
+        auto message = make_frame(msg, contents);
+        if (contents.destination == "") {
+            // broadcast-type message.
+            for (const auto &[name, ses] : username_sessions) {
+                if (name != session->username) {
+                    ses->send_queue.push(message);
+                }
+            }
+        } else {
+            try {
+                username_sessions.at(contents.destination)
+                    ->send_queue.push(message);
+            } catch (std::out_of_range &e) {
+                return make_frame(message_t::ERR_NOSUCHUSER);
+            }
+        }
+
     }
     if (msg == message_t::MSG_LOGOUT) {
         // TODO: if we are already logged out, should this fail with NOLOGIN?
