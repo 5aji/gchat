@@ -139,7 +139,11 @@ class Epoll : public FileDes<Epoll> {
     };
 
     void set_events(AbstractFileDes &item, int events) {
-        int item_fd = item.get_fd();
+	    int item_fd = item.get_fd();
+	    set_events(item_fd, events);
+    }
+    // dangerous and bad don't do this.
+    void set_events(int item_fd, int events) {
         epoll_event ev;
         ev.events = events;
         ev.data.fd = item_fd;

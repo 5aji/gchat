@@ -12,7 +12,7 @@
 #include <csignal>
 #include <memory>
 #include <queue>
-
+#include <list>
 // track if we are authenticated or not.
 struct AuthState {
     bool authed = false;
@@ -30,6 +30,64 @@ std::queue<std::pair<message_t, Packet_t>> ack_queue;
 // queue of frames.
 std::queue<Frame> send_queue;
 
+
+// for sending files, we declare a "file job", which is the state for the sending of a file.
+
+struct FileJob {
+    std::string filename;
+    std::string destination;
+    std::ifstream file; // where we read the file.
+};
+
+// we have a list of file jobs, we want O(1) insertion/removal anywhere.
+std::list<FileJob> f_jobs;
+
+// we need a function that we can call to push new file sending frames to send_queue.
+// we call this when the send_queue is empty. If it is still empty after (we have no file transfers in progress).
+// then we remove the EPOLLOUT event trigger. We add it back in when we start a file transfer.
+void run_file_jobs() {
+    for (auto i = f_jobs.begin(); i != f_jobs.end();) {
+	FilePacket pkt;
+	pkt.filename = i->filename;
+	pkt.destination = i->destination;
+
+	if (!i->file.is_open()) {
+		print("Starting to send " + i->filename);
+		i->file.open(i->filename, std::ios::in | std::ios::binary);
+	}
+
+	if (!i->file.good()) {
+		print(i->filename + " in bad state, terminating: " + strerror(errno));
+		i->file.close();
+		i = f_jobs.erase(i);
+		continue;
+	}
+
+	std::vector<char> buf(FilePacket::max_size);
+
+	i->file.read(buf.data(), FilePacket::max_size);
+
+	buf.resize(i->file.gcount());
+
+	pkt.data = buf;
+
+
+	if (i->file.eof()) {
+		print(i->filename + " finished sending.");
+		pkt.eof = true;
+		send_queue.push(make_frame(message_t::MSG_XFER, pkt));
+		i->file.close();
+		i = f_jobs.erase(i);
+		continue;
+	}
+	// at this point, the file is still in progress.
+	pkt.eof = false;
+	send_queue.push(make_frame(message_t::MSG_XFER, pkt));
+	++i;
+
+    }
+}
+
 // takes a filename, opens the file, creates packets, etc etc. DOESN't work when not
 // logged in, since that would flood things pretty badly.
 void send_file(std::string filename, std::string destination) {
@@ -37,7 +95,6 @@ void send_file(std::string filename, std::string destination) {
 
     FilePacket tpl;
     tpl.filename = filename;
-    tpl.username = auth_state.username;
     tpl.destination = destination;
 
     // now we open the file, read max bytes from it into a vector, copy our template,
@@ -74,13 +131,15 @@ void handle_files(const FilePacket& p) {
     auto file = output_files.find(fname);
     if (file == output_files.end()) {
         // file handle doesn't exist yet, open it.
-        output_files[fname] = std::ofstream(fname, std::ios::out | std::ios::binary);
+        print("Starting to download " + fname);
+        output_files[fname] = std::ofstream(fname, std::ios::out | std::ios::binary | std::ios::trunc);
     }
 
     output_files.at(fname).write(p.data.data(), p.data.size());
 
     if (p.eof) {
         // fstream destructor closes, so this is safe.
+        print("Finished recieving " + fname);
         output_files.erase(fname);
     }
 
@@ -121,6 +180,10 @@ int parseFile(std::ifstream &file) {
         auto f = make_frame(message_t::MSG_LOGIN, packet);
         send_queue.push(f);
         ack_queue.push(std::pair(message_t::MSG_LOGIN, packet));
+    } else if (command == "LOGOUT") {
+        auto f = make_frame(message_t::MSG_LOGOUT);
+        send_queue.push(f);
+        ack_queue.push(std::pair(message_t::MSG_LOGOUT, std::monostate()));
     } else if (command == "SEND") {
         std::string message;
         std::getline(file, message);
@@ -158,13 +221,23 @@ int parseFile(std::ifstream &file) {
         ack_queue.push(std::pair(message_t::MSG_SEND, packet));
     } else if (command == "SENDF") {
         std::string filename;
-        file >> filename;
-        send_file(filename, "");
+        // std::getline(file, filename);
+	file >> filename;
+        FileJob fj {};
+	fj.filename = filename;
+	f_jobs.push_back(std::move(fj));
+	run_file_jobs();
     } else if (command == "SENDF2") {
         std::string destination;
         std::string filename;
-        file >> destination >> filename;
-        send_file(filename, destination);
+        file >> destination;
+        // std::getline(file, filename);
+	file >> filename;
+	FileJob fj;
+	fj.filename = filename;
+	fj.destination = destination;
+	f_jobs.push_back(std::move(fj));
+	run_file_jobs();
     } else if (command == "LIST") {
         auto f = make_frame(message_t::MSG_GETLIST);
         send_queue.push(f);
@@ -184,7 +257,7 @@ std::optional<Frame> serverHandler(message_t resp, Packet_t pkt) {
     Packet_t msg_pkt = ack_queue.front().second;
     auto sent_name = message_names.find(msg_ack);
     if (resp == message_t::MSG_OK) {
-        print(sent_name->second + " OK!");
+        // print(sent_name->second + " OK!");
         // if the message we sent was a login, we know it worked now and can set
         // our username
         if (msg_ack == message_t::MSG_LOGIN) {
@@ -223,7 +296,7 @@ std::optional<Frame> serverHandler(message_t resp, Packet_t pkt) {
         print("Currently (" + std::to_string(message.users.size()) + ") users online:\n" + users); 
     }
     if (resp == message_t::MSG_XFER) {
-
+	print("got a xfer");
         auto message = std::get<FilePacket>(pkt);
         handle_files(message);
 
@@ -299,6 +372,7 @@ int main(int argc, char * argv[]) {
             exit(-1);
         }
         if (events & EPOLLIN) {
+	    std::cout << "got data" << std::endl;
             auto new_data = s.recv(1024);
             r_state.data.insert(r_state.data.end(), new_data.begin(),
                                 new_data.end());
@@ -354,7 +428,11 @@ int main(int argc, char * argv[]) {
             }
         }
         if (events & EPOLLOUT) {
-            if (send_queue.size() == 0) {
+	    if (send_queue.size() == 0) {
+		    run_file_jobs(); // try and get more frames.
+	    }
+	    // again but this time we know that there are no jobs running.
+            if (send_queue.size() == 0 && f_jobs.size() == 0) {
                 // disable epollout events for now.
                 epoll.set_events(s, EPOLLIN | EPOLLRDHUP);
                 return;

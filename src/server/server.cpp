@@ -37,7 +37,6 @@ auto username_sessions =
 
 auto store = DataStore<ServerData>("serverdata.bin");
 
-
 // takes an input frame and gives an appropriate response.
 std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
                                    std::shared_ptr<ClientSession> session) {
@@ -50,6 +49,7 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         }
         // store password and return ok
         store.data.user_database.push_back(contents);
+        print("Account registered: " + contents.username);
         return make_frame(message_t::MSG_OK);
     }
     if (msg == message_t::MSG_LOGIN) {
@@ -98,12 +98,16 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         auto message = make_frame(msg, contents);
         if (contents.destination == "") {
             // broadcast-type message.
+            
+            print(session->username + " sending " + (contents.username == "a" ? "an anonymous " : "") + "message to everyone");
             for (const auto &[name, ses] : username_sessions) {
                 if (name != session->username) {
                     ses->send_queue.push(message);
                 }
             }
         } else {
+            print(session->username + " sending " + (contents.username == "a" ? "an anonymous " : "") + "message to " +
+                    contents.destination);
             try {
                 username_sessions.at(contents.destination)
                     ->send_queue.push(message);
@@ -123,13 +127,11 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         }
 
         auto contents = std::get<FilePacket>(pkt);
-        if (contents.username != session->username && contents.username != "") {
-            return make_frame(message_t::ERR_NOPERMS);
-        }
         auto message = make_frame(msg, contents);
         if (contents.destination == "") {
             // broadcast-type message.
-            for (const auto &[name, ses] : username_sessions) {
+	    print("broadcasting file");
+            for (const auto& [name, ses] : username_sessions) {
                 if (name != session->username) {
                     ses->send_queue.push(message);
                 }
@@ -139,7 +141,7 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
                 username_sessions.at(contents.destination)
                     ->send_queue.push(message);
             } catch (std::out_of_range &e) {
-                return make_frame(message_t::ERR_NOSUCHUSER);
+	    	// lmao
             }
         }
 
@@ -147,7 +149,11 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
     if (msg == message_t::MSG_LOGOUT) {
         // TODO: if we are already logged out, should this fail with NOLOGIN?
         session->authed = false;
+        if (session->username != "") {
+            print(session->username + " logged out");
+        }
         username_sessions.erase(session->username);
+        session->username = "";
         return make_frame(message_t::MSG_OK);
     }
 
@@ -155,9 +161,10 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         if (!session->authed) {
             return make_frame(message_t::ERR_NOLOGIN);
         }
+        print(session->username + " requested online user list.");
         std::vector<std::string> users;
-        for (const auto& lp : store.data.user_database) {
-            users.push_back(lp.username);
+        for (const auto& lp : username_sessions) {
+            users.push_back(lp.first);
         }
 
         ListPacket pack { .users = users };
@@ -260,7 +267,6 @@ int main(int argc, char* argv[]) {
                     auto response = clientHandler(type, payload, session);
                     if (response.has_value()) {
                         session->send_queue.push(response.value());
-                        epoll.set_events(s, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
                     }
 
                     // reset for the next header.
@@ -303,6 +309,11 @@ int main(int argc, char* argv[]) {
                 break;
             } else throw e;
         }
+	for (const auto& [fd, ses] : socket_sessions) {
+		if (ses->send_queue.size() > 0) {
+			epoll.set_events(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
+		}
+	}
     }
     print("Shutting down...");
     return 0;
