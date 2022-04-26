@@ -56,18 +56,23 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         auto contents = std::get<LoginPacket>(pkt);
         auto pw = store.data.find_user(contents.username);
         if (pw == store.data.user_database.end()) {
+	    print("Login attempt failed: " + contents.username + " not registered");
             return make_frame(message_t::ERR_NOTREGISTERED);
         }
         if (pw->password != contents.password) {
+	    print("Login attempt failed: " + contents.username + " incorrect password");
             return make_frame(message_t::ERR_PASSWRONG);
         }
         if (username_sessions.find(contents.username) !=
             username_sessions.end()) {
+	    print("Login attempt failed: " + contents.username + " already logged in");
             return make_frame(message_t::ERR_ALREADYLOGGEDIN);
         }
         if (session->authed) {
+	    print("Login attempt failed: " + contents.username + " already logged in");
             return make_frame(message_t::ERR_ALREADYLOGGEDIN);
         }
+	print(contents.username + " logged in successfully");
         // set authed and username.
         session->authed = true;
         session->username = contents.username;
@@ -83,6 +88,7 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
     }
     if (msg == message_t::MSG_SEND) {
         if (!session->authed) {
+	    print("Failed to send message: not logged in");
             return make_frame(message_t::ERR_NOLOGIN);
         }
         // to broadcast, loop over username_sessions and put frame on send_queue
@@ -93,6 +99,7 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
             // not an anonymous and not a message from us, so we respond with an
             // error. NOPERMS. This means that some clients can have permissions
             // to send as anyone. (admins).
+	    print(session->username + " tried to send a message as " + contents.username + ", but they don't have permission");
             return make_frame(message_t::ERR_NOPERMS);
         }
         auto message = make_frame(msg, contents);
@@ -113,8 +120,10 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
                     ->send_queue.push(message);
             } catch (std::out_of_range &e) {
                 if (store.data.find_user(contents.destination) != store.data.user_database.end()) {
+	           print("That user isn't online, so we will save the message");
                    store.data.offline_msgs.push_back(contents); 
                 } else {
+	            print("That user doesn't exist.");
                     return make_frame(message_t::ERR_NOSUCHUSER);
                 }
             }
@@ -130,18 +139,21 @@ std::optional<Frame> clientHandler(message_t msg, Packet_t pkt,
         auto message = make_frame(msg, contents);
         if (contents.destination == "") {
             // broadcast-type message.
-	    print("broadcasting file");
+	    if (contents.eof)
+	    	print(contents.username + " sent file " + contents.filename + " to everyone");
             for (const auto& [name, ses] : username_sessions) {
                 if (name != session->username) {
                     ses->send_queue.push(message);
                 }
             }
         } else {
+	    if (contents.eof)
+	    	print(contents.username + " sent file " + contents.filename + " to " + contents.destination);
             try {
                 username_sessions.at(contents.destination)
                     ->send_queue.push(message);
             } catch (std::out_of_range &e) {
-	    	// lmao
+	    	// lmao i guess
             }
         }
 
@@ -214,7 +226,7 @@ int main(int argc, char* argv[]) {
     auto client_handler = [&](Netty::Socket &s, int events) {
         auto session = socket_sessions[s.get_fd()];
         if (events & EPOLLRDHUP) {
-            print("closing connection " + std::to_string(s.get_fd()));
+            print("Closing connection " + std::to_string(s.get_fd()) + (session->authed ? " (" + session->username + ")" : ""));
             if (session->authed) {
                 username_sessions.erase(session->username);
             }
@@ -276,7 +288,7 @@ int main(int argc, char* argv[]) {
             }
         }
         if (events & EPOLLOUT) {
-            // we can write,
+	
             if (session->send_queue.size() == 0) {
                 epoll.set_events(s, EPOLLIN | EPOLLRDHUP);
                 return;
@@ -303,7 +315,7 @@ int main(int argc, char* argv[]) {
     print("Server starting...");
     while (1) {
         try {
-            epoll.wait(-1);
+            epoll.wait(200);
         } catch (std::system_error& e) {
             if (quit.load()) {
                 break;

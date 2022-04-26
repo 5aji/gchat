@@ -38,7 +38,6 @@ enum class message_t {
     ERR_NOSUCHUSER, // can't message user since they don't exist.
     ERR_PASSWRONG,  // wrong password
     ERR_NOPERMS,    // tried to send message as a different user.
-    ERR_NOSUCHFILE
 };
 const std::map<message_t, std::string> message_names{
     {message_t::MSG_OK, "OK"},
@@ -105,10 +104,11 @@ struct FilePacket {
     bool eof = false;
     std::string filename; // where to store the file
     std::vector<char> data;
-    shortstring destination; // user to send the file to
+    shortstring destination; // user to send the file throw
+    std::string username;
     static constexpr auto max_size = 1024;
 
-    MAKE_SERIAL(eof, filename, data, destination)
+    MAKE_SERIAL(eof, username, filename, data, destination)
 };
 
 // contains a list of users currently logged on.

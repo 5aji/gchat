@@ -50,6 +50,7 @@ void run_file_jobs() {
 	FilePacket pkt;
 	pkt.filename = i->filename;
 	pkt.destination = i->destination;
+	pkt.username = auth_state.username;
 
 	if (!i->file.is_open()) {
 		print("Starting to send " + i->filename);
@@ -88,39 +89,6 @@ void run_file_jobs() {
     }
 }
 
-// takes a filename, opens the file, creates packets, etc etc. DOESN't work when not
-// logged in, since that would flood things pretty badly.
-void send_file(std::string filename, std::string destination) {
-    if (!auth_state.authed) return;
-
-    FilePacket tpl;
-    tpl.filename = filename;
-    tpl.destination = destination;
-
-    // now we open the file, read max bytes from it into a vector, copy our template,
-    // and push this new packet to the queue.
-
-    std::ifstream f(filename, std::ios::in | std::ios::binary);
-
-    std::vector<char> buf;
-
-    while (f.good()) {
-
-        buf.resize(FilePacket::max_size);
-
-        f.read(buf.data(), FilePacket::max_size);
-        // create packet
-        FilePacket datapack = tpl; //copy
-        buf.resize(f.gcount());
-        datapack.data = buf;
-        if (!f.good()) {
-            datapack.eof = true;
-        }
-        send_queue.push(make_frame(message_t::MSG_XFER, datapack));
-    }
-
-}
-
 std::map<std::string, std::ofstream> output_files;
 
 // handles opening/writing/closing files.
@@ -131,7 +99,7 @@ void handle_files(const FilePacket& p) {
     auto file = output_files.find(fname);
     if (file == output_files.end()) {
         // file handle doesn't exist yet, open it.
-        print("Starting to download " + fname);
+        print("Starting to download " + fname + " from " + p.username);
         output_files[fname] = std::ofstream(fname, std::ios::out | std::ios::binary | std::ios::trunc);
     }
 
@@ -139,7 +107,7 @@ void handle_files(const FilePacket& p) {
 
     if (p.eof) {
         // fstream destructor closes, so this is safe.
-        print("Finished recieving " + fname);
+        print("Finished receiving " + fname + " from " + p.username);
         output_files.erase(fname);
     }
 
@@ -182,11 +150,13 @@ int parseFile(std::ifstream &file) {
         ack_queue.push(std::pair(message_t::MSG_LOGIN, packet));
     } else if (command == "LOGOUT") {
         auto f = make_frame(message_t::MSG_LOGOUT);
+	print("executing LOGOUT");
         send_queue.push(f);
         ack_queue.push(std::pair(message_t::MSG_LOGOUT, std::monostate()));
     } else if (command == "SEND") {
         std::string message;
-        std::getline(file, message);
+        std::getline(file >> std::ws, message); // std::ws skips leading newlines.
+	print("executing SEND " + message);
         MessagePacket packet{.message = message,
                              .username = auth_state.username};
         auto f = make_frame(message_t::MSG_SEND, packet);
@@ -196,7 +166,8 @@ int parseFile(std::ifstream &file) {
         std::string destination;
         file >> destination;
         std::string message;
-        std::getline(file, message);
+        std::getline(file >> std::ws, message);
+	print("executing SEND2 " + destination + " " + message);
         MessagePacket packet{.message = message,
                              .username = auth_state.username,
                              .destination = destination};
@@ -205,8 +176,9 @@ int parseFile(std::ifstream &file) {
         ack_queue.push(std::pair(message_t::MSG_SEND, packet));
     } else if (command == "SENDA") {
         std::string message;
-        std::getline(file, message);
+        std::getline(file >> std::ws, message);
         MessagePacket packet{.message = message};
+	print("executing SENDA " + message);
         auto f = make_frame(message_t::MSG_SEND, packet);
         send_queue.push(f);
         ack_queue.push(std::pair(message_t::MSG_SEND, packet));
@@ -214,12 +186,13 @@ int parseFile(std::ifstream &file) {
         std::string destination;
         file >> destination;
         std::string message;
-        std::getline(file, message);
+        std::getline(file >> std::ws, message);
+	print("executing SENDA2 " + destination + " " + message);
         MessagePacket packet{.message = message, .destination = destination};
         auto f = make_frame(message_t::MSG_SEND, packet);
         send_queue.push(f);
         ack_queue.push(std::pair(message_t::MSG_SEND, packet));
-    } else if (command == "SENDF") {
+    } else if (command == "SENDF") { // both this and sendf2 are printed by the filejob handler
         std::string filename;
         // std::getline(file, filename);
 	file >> filename;
@@ -294,12 +267,11 @@ std::optional<Frame> serverHandler(message_t resp, Packet_t pkt) {
             users.append("\t" + u + "\n");
         }
         print("Currently (" + std::to_string(message.users.size()) + ") users online:\n" + users); 
+	ack_queue.pop();
     }
     if (resp == message_t::MSG_XFER) {
-	print("got a xfer");
         auto message = std::get<FilePacket>(pkt);
         handle_files(message);
-
     }
     return std::nullopt;
 }
@@ -372,7 +344,6 @@ int main(int argc, char * argv[]) {
             exit(-1);
         }
         if (events & EPOLLIN) {
-	    std::cout << "got data" << std::endl;
             auto new_data = s.recv(1024);
             r_state.data.insert(r_state.data.end(), new_data.begin(),
                                 new_data.end());
