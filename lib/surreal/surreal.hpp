@@ -278,7 +278,8 @@ std::ostream &operator<<(std::ostream &os, const T &obj) {
     std::apply(
         [&os](auto const fst, auto const... rest) {
             os << fst;
-            ((os << ", " << rest), ...); // This is called a "fold expression".
+	    // fuck it
+            ((os << ", " << rest), ...);
         },
         obj.members());
     return os;

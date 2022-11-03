@@ -106,7 +106,7 @@ Compilation
 THIS PROGRAM ***REQUIRES*** C++20! 
 
 It will *not* compile on anything less than that!
-Tested versions of GCC include the latest release, as well as the last in the gcc 10 series.
+Tested versions of GCC include the latest release (11), as well as the last in the gcc 10 series.
 
 A Makefile is included to compile both programs. Running `make` will build everything. You may want to 
 add -j to make it faster (the template metaprogramming increases the compilation times).
@@ -116,7 +116,15 @@ to get it. There's also the toolchain PPA which has 11 for sure. But you might n
 from it (including a new libstdc++)
 
 If you run into issues, please reach out. I can prepare statically linked binaries for use on 18.04. I can also
-try and compile it on an Ubuntu 18.04 VM to create steps to compile it.
+try and compile it on an Ubuntu 18.04 VM to create steps to compile it/figure out what ppa to use.
+
+I tested GCC-10 using Debian Sid in a container. The steps were as follows:
+
+1. apt install g++-10 make
+2. make CC=gcc-10 CXX=g++-10
+3. bin/server 5555
+
+This should also work with Debian buster. The important thing is setting the CC and CXX variables.
 
 Execution
 ============
