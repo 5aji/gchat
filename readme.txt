@@ -1,11 +1,10 @@
-GopherChat
+gchat
 ===========
-
-CSCI 4211 Project
+A chat program for a specific university course
 Written by Saji Champlin. All code is my own.
 
 This repository contains code implementing the GopherChat specification
-for CSCI 4211 Spring 2022. GopherChat specifies a single server
+for a certain Computer Science Course. gchat specifies a single server
 and client interface for private/public messages, with support for
 anonymous messages, file transfers, users listing, and server side monitoring.
 
@@ -71,7 +70,7 @@ any strong guarantees.
 Struture
 ============
 
-This project contains four libraries, both written specifically for this project
+This project contains four libraries, all written specifically for this project
 (they are not libraries I had lying around). The first library is a wrapper
 for the linux socket API to make it easier to handle. More details can be found
 in the lib/netty folder. 
